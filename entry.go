@@ -11,37 +11,39 @@ import (
     "time"
 
     "github.com/shirou/gopsutil/v4/disk"
-    "github.com/shirou/gopsutil/v4/sensors"
     "github.com/shirou/gopsutil/v4/host"
+    "github.com/shirou/gopsutil/v4/load"
+    "github.com/shirou/gopsutil/v4/mem"
+    "github.com/shirou/gopsutil/v4/sensors"
 )
 
 // APIResponse - define structure of api response
 type APIResponse struct {
-    Code    int         `json:"code"`
-    Status  string      `json:"status"`
-    Data    interface{} `json:"data"`
+    Code   int         `json:"code"`
+    Status string      `json:"status"`
+    Data   interface{} `json:"data"`
 }
 
 // api status enum
 var API_MSG_ENUM = map[int]string{
-    0:    "success",
-    404:  "no data",
-    522:  "wrong arguments",
+    0:   "success",
+    404: "no data",
+    522: "wrong arguments",
 }
 
 // makeJSONResponse - format the response
 func makeJSONResponse(code int, data interface{}) APIResponse {
-    if _, ok := API_MSG_ENUM[code];!ok {
+    if _, ok := API_MSG_ENUM[code]; !ok {
         panic("illegal code")
     }
     return APIResponse{
-        Code:    code,
-        Status:  API_MSG_ENUM[code],
-        Data:    data,
+        Code:   code,
+        Status: API_MSG_ENUM[code],
+        Data:   data,
     }
 }
 
-// roundToNDecimal 
+// roundToNDecimal
 func roundToNDecimal(num float64, n int) float64 {
     multiplier := math.Pow(10, float64(n))
     return math.Round(num*multiplier) / multiplier
@@ -74,6 +76,34 @@ func getTemps() (interface{}, error) {
         }
     }
     return result, nil
+}
+
+// getSysLoads - OS load index
+func getSysLoads() (interface{}, error) {
+    loadInfo, err := load.Avg()
+    if err != nil {
+        log.Printf("Error getting system load: %v", err)
+        return nil, err
+    }
+    return map[string]float64{
+        "load_01": roundToNDecimal(loadInfo.Load1, 2),
+        "load_05": roundToNDecimal(loadInfo.Load5, 2),
+        "load_15": roundToNDecimal(loadInfo.Load15, 2),
+    }, nil
+}
+
+// getMemInfo - OS virtual memory information
+func getMemInfo() (interface{}, error) {
+    memInfo, err := mem.VirtualMemory()
+    if err != nil {
+        log.Printf("Error getting mem info: %v", err)
+        return nil, err
+    }
+    return map[string]interface{}{
+        "total":     fmt.Sprintf("%.2fM", float64(memInfo.Total)/math.Pow(1024, float64(2))),
+        "used":      fmt.Sprintf("%.2fM", float64(memInfo.Used)/math.Pow(1024, float64(2))),
+        "free_rate": roundToNDecimal(100-float64(memInfo.UsedPercent), 2),
+    }, nil
 }
 
 // getBootTime - sys uptime
@@ -118,15 +148,17 @@ func formatElapsedTime(seconds float64) string {
     return strings.Join(result, " ")
 }
 
-// statsHandler - handle http requests to /stats/<data_type> 
+// statsHandler - handle http requests to /stats/<data_type>
 func statsHandler(w http.ResponseWriter, r *http.Request) {
     dataType := r.URL.Path[len("/stats/"):]
     registry := map[string]func() (interface{}, error){
         "du":        getDU,
         "temps":     getTemps,
         "boot_time": getBootTime,
+        "load_avg":  getSysLoads,
+        "mem":       getMemInfo,
     }
-    if _, ok := registry[dataType];!ok {
+    if _, ok := registry[dataType]; !ok {
         response := makeJSONResponse(522, "wrong data type")
         json.NewEncoder(w).Encode(response)
         return
@@ -153,4 +185,3 @@ func main() {
     log.Printf("Starting server on %s", address)
     log.Fatal(http.ListenAndServe(address, nil))
 }
-

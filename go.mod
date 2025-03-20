@@ -1,6 +1,6 @@
 module entry.go
 
-go 1.24.1
+go 1.20
 
 require github.com/shirou/gopsutil/v4 v4.25.2
 

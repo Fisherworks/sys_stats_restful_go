@@ -9,14 +9,19 @@ Well, maybe I just want to try something new that can be both easily written/rea
 ## More than Python version
 New `data_type` keywords added, it's 5 of them now, including `mem_info, load_avg, disk_usage, boot_time, sensors_temp`. 
 ```
-$ curl http://localhost:9090/stats/mem | jq .
+$ curl http://localhost:9090/stats/disk_usage | jq .
 {
   "code": 0,
   "status": "success",
   "data": {
-    "free_rate": 59.94,
-    "total": "1962.04M",
-    "used": "786.02M"
+    "/": {
+      "free_rate": 86.18,
+      "free_size": 64220.65
+    },
+    "/boot": {
+      "free_rate": 52.63,
+      "free_size": 268.91
+    }
   }
 }
 ```

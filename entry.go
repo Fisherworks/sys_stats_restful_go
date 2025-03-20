@@ -57,7 +57,7 @@ func getDU() (interface{}, error) {
         return nil, err
     }
 
-    result := make(map[string]map[string]interface{})
+    result := make(map[string]map[string]float64)
     for _, partition := range partitions {
         device := partition.Device
         if strings.HasPrefix(device, "/dev/") || strings.Contains(device, ":") {
@@ -66,9 +66,8 @@ func getDU() (interface{}, error) {
                 log.Printf("Error getting disk usage for %s: %v", partition.Mountpoint, err)
                 continue
             }
-            freeSize := roundToNDecimal(float64(usage.Free)/(1024*1024), 2)
-            result[partition.Mountpoint] = map[string]interface{}{
-                "free_size": fmt.Sprintf("%.2fM", freeSize),
+            result[partition.Mountpoint] = map[string]float64{
+                "free_size": roundToNDecimal(float64(usage.Free)/(1024*1024), 2),
                 "free_rate": roundToNDecimal(100-float64(usage.UsedPercent), 2),
             }
         }
@@ -155,9 +154,9 @@ func getMemInfo() (interface{}, error) {
         log.Printf("Error getting mem info: %v", err)
         return nil, err
     }
-    return map[string]interface{}{
-        "total":     fmt.Sprintf("%.2fM", float64(memInfo.Total)/math.Pow(1024, float64(2))),
-        "used":      fmt.Sprintf("%.2fM", float64(memInfo.Used)/math.Pow(1024, float64(2))),
+    return map[string]float64{
+        "total":     roundToNDecimal(float64(memInfo.Total)/(1024*1024), 2),
+        "used":      roundToNDecimal(float64(memInfo.Used)/(1024*1024), 2),
         "free_rate": roundToNDecimal(100-float64(memInfo.UsedPercent), 2),
     }, nil
 }

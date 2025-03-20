@@ -7,7 +7,7 @@ A Go based porting repo of my other one - [Sys Stats Restful](https://github.com
 Well, maybe I just want to try something new that can be both easily written/read and deployed anywhere, such as an embedded device like a router, without concerning too much about its dependencies. Furthermore, considering the barely simplified features of this app, it might be a nice route to a new learning experience. 
 
 ## More than Python version
-New `data_type` keywords added, it's 5 of them now, including `mem, load_avg, du, boot_time, temps`. 
+New `data_type` keywords added, it's 5 of them now, including `mem_info, load_avg, disk_usage, boot_time, sensors_temp`. 
 ```
 $ curl http://localhost:9090/stats/mem | jq .
 {
@@ -32,3 +32,4 @@ $ ./entry -h 0.0.0.0 -p 9090
 
 * Linux - aarch64/arm64
 * Linux - amd64
+* Win10 - amd64 (Partial)

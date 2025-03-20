@@ -17,52 +17,66 @@ import (
     "github.com/shirou/gopsutil/v4/sensors"
 )
 
-// APIResponse - define structure of api response
+// APIResponse defines the structure of the API response
 type APIResponse struct {
-    Code   int         `json:"code"`
-    Status string      `json:"status"`
-    Data   interface{} `json:"data"`
+    Code    int         `json:"code"`
+    Status  string      `json:"status"`
+    Data    interface{} `json:"data"`
 }
 
-// api status enum
+// Define the API status code enumeration
 var API_MSG_ENUM = map[int]string{
-    0:   "success",
-    404: "no data",
-    522: "wrong arguments",
+    0:    "success",
+    404:  "no data",
+    522:  "wrong arguments",
 }
 
-// makeJSONResponse - format the response
+// makeJSONResponse is used to format the JSON response
 func makeJSONResponse(code int, data interface{}) APIResponse {
-    if _, ok := API_MSG_ENUM[code]; !ok {
+    if _, ok := API_MSG_ENUM[code];!ok {
         panic("illegal code")
     }
     return APIResponse{
-        Code:   code,
-        Status: API_MSG_ENUM[code],
-        Data:   data,
+        Code:    code,
+        Status:  API_MSG_ENUM[code],
+        Data:    data,
     }
 }
 
-// roundToNDecimal
+// roundToNDecimal is a helper function to round a floating-point number to n decimal places
 func roundToNDecimal(num float64, n int) float64 {
     multiplier := math.Pow(10, float64(n))
     return math.Round(num*multiplier) / multiplier
 }
 
-// getDU - disk usage of linux root partition
+// getDU retrieves the disk usage information for all mount points
 func getDU() (interface{}, error) {
-    usage, err := disk.Usage("/")
+    partitions, err := disk.Partitions(true)
     if err != nil {
-        log.Printf("Error getting disk usage: %v", err)
+        log.Printf("Error getting disk partitions: %v", err)
         return nil, err
     }
-    return map[string]float64{
-        "free_size": roundToNDecimal(float64(usage.Free)/(1024*1024), 2),
-        "free_rate": roundToNDecimal(100-float64(usage.UsedPercent), 2),
-    }, nil
+
+    result := make(map[string]map[string]interface{})
+    for _, partition := range partitions {
+        device := partition.Device
+        if strings.HasPrefix(device, "/dev/") || strings.Contains(device, ":") {
+            usage, err := disk.Usage(partition.Mountpoint)
+            if err != nil {
+                log.Printf("Error getting disk usage for %s: %v", partition.Mountpoint, err)
+                continue
+            }
+            freeSize := roundToNDecimal(float64(usage.Free)/(1024*1024), 2)
+            result[partition.Mountpoint] = map[string]interface{}{
+                "free_size": fmt.Sprintf("%.2fM", freeSize),
+                "free_rate": roundToNDecimal(100-float64(usage.UsedPercent), 2),
+            }
+        }
+    }
+    return result, nil
 }
 
-// getTemps - read temperatures of linux sensors
+// getTemps retrieves the sensor temperature information
 func getTemps() (interface{}, error) {
     temps, err := sensors.SensorsTemperatures()
     if err != nil {
@@ -78,35 +92,7 @@ func getTemps() (interface{}, error) {
     return result, nil
 }
 
-// getSysLoads - OS load index
-func getSysLoads() (interface{}, error) {
-    loadInfo, err := load.Avg()
-    if err != nil {
-        log.Printf("Error getting system load: %v", err)
-        return nil, err
-    }
-    return map[string]float64{
-        "load_01": roundToNDecimal(loadInfo.Load1, 2),
-        "load_05": roundToNDecimal(loadInfo.Load5, 2),
-        "load_15": roundToNDecimal(loadInfo.Load15, 2),
-    }, nil
-}
-
-// getMemInfo - OS virtual memory information
-func getMemInfo() (interface{}, error) {
-    memInfo, err := mem.VirtualMemory()
-    if err != nil {
-        log.Printf("Error getting mem info: %v", err)
-        return nil, err
-    }
-    return map[string]interface{}{
-        "total":     fmt.Sprintf("%.2fM", float64(memInfo.Total)/math.Pow(1024, float64(2))),
-        "used":      fmt.Sprintf("%.2fM", float64(memInfo.Used)/math.Pow(1024, float64(2))),
-        "free_rate": roundToNDecimal(100-float64(memInfo.UsedPercent), 2),
-    }, nil
-}
-
-// getBootTime - sys uptime
+// getBootTime retrieves the system boot time information
 func getBootTime() (interface{}, error) {
     bootTime, err := host.BootTime()
     if err != nil {
@@ -122,7 +108,7 @@ func getBootTime() (interface{}, error) {
     }, nil
 }
 
-// formatElapsedTime - to get readable time format
+// formatElapsedTime converts the number of seconds into a human-readable format
 func formatElapsedTime(seconds float64) string {
     var intervals = []struct {
         name  string
@@ -148,17 +134,45 @@ func formatElapsedTime(seconds float64) string {
     return strings.Join(result, " ")
 }
 
-// statsHandler - handle http requests to /stats/<data_type>
+// getSysLoads retrieves the 1-minute and 15-minute average system load information
+func getSysLoads() (interface{}, error) {
+    loadInfo, err := load.Avg()
+    if err != nil {
+        log.Printf("Error getting system load: %v", err)
+        return nil, err
+    }
+    return map[string]float64{
+        "load_01": roundToNDecimal(loadInfo.Load1, 2),
+        "load_05": roundToNDecimal(loadInfo.Load5, 2),
+        "load_15": roundToNDecimal(loadInfo.Load15, 2),
+    }, nil
+}
+
+// getMemInfo retrieves the OS virtual memory information
+func getMemInfo() (interface{}, error) {
+    memInfo, err := mem.VirtualMemory()
+    if err != nil {
+        log.Printf("Error getting mem info: %v", err)
+        return nil, err
+    }
+    return map[string]interface{}{
+        "total":     fmt.Sprintf("%.2fM", float64(memInfo.Total)/math.Pow(1024, float64(2))),
+        "used":      fmt.Sprintf("%.2fM", float64(memInfo.Used)/math.Pow(1024, float64(2))),
+        "free_rate": roundToNDecimal(100-float64(memInfo.UsedPercent), 2),
+    }, nil
+}
+
+// statsHandler handles the /stats/<data_type> route
 func statsHandler(w http.ResponseWriter, r *http.Request) {
     dataType := r.URL.Path[len("/stats/"):]
     registry := map[string]func() (interface{}, error){
-        "du":        getDU,
-        "temps":     getTemps,
+        "disk_usage": getDU,
+        "sensors_temp": getTemps,
         "boot_time": getBootTime,
         "load_avg":  getSysLoads,
-        "mem":       getMemInfo,
+        "mem_info":  getMemInfo,
     }
-    if _, ok := registry[dataType]; !ok {
+    if _, ok := registry[dataType];!ok {
         response := makeJSONResponse(522, "wrong data type")
         json.NewEncoder(w).Encode(response)
         return
@@ -174,7 +188,7 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    // cmdline arguments
+    // Define command-line arguments
     hostPtr := flag.String("h", "127.0.0.1", "Server listen address")
     portPtr := flag.String("p", "9090", "Server listen port")
     flag.Parse()
@@ -185,3 +199,4 @@ func main() {
     log.Printf("Starting server on %s", address)
     log.Fatal(http.ListenAndServe(address, nil))
 }
+

@@ -75,12 +75,28 @@ func getDU() (interface{}, error) {
     return result, nil
 }
 
-// getTemps retrieves the sensor temperature information
+// getTemps retrieves the sensor temperature information with warning details
 func getTemps() (interface{}, error) {
     temps, err := sensors.SensorsTemperatures()
+
+    // Handle warnings from gopsutil's Warnings type (pointer receiver)
     if err != nil {
-        return nil, err
+        log.Printf("Error getting sensors temperatures: %v", err)
+        if warns, ok := err.(*sensors.Warnings); ok {
+            for i, warn := range warns.List {
+                log.Printf("Sensor warning %d: %v", i+1, warn)
+            }
+        } else {
+            log.Printf("Sensor error: %v", err)
+        }
     }
+
+    // Return error if no temperature data available
+    if len(temps) == 0 {
+        return nil, fmt.Errorf("no valid temperature data: %w", err)
+    }
+
+    // Process valid temperature data
     result := make(map[string]map[string]float64)
     for _, temp := range temps {
         result[temp.SensorKey] = map[string]float64{
